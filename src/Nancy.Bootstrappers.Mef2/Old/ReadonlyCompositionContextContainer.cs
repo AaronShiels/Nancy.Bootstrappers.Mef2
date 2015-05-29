@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Composition;
 using System.Composition.Convention;
+using System.Composition.Hosting.Core;
 
 namespace Nancy.Bootstrappers.Mef2
 {
@@ -37,6 +38,11 @@ namespace Nancy.Bootstrappers.Mef2
         public void Update(Action<ConventionBuilder> builderActions)
         {
             throw new NotImplementedException();
+        }
+
+        public object GetExport(CompositionContract compositionContract)
+        {
+            return _compositionContext.GetExport(compositionContract);
         }
     }
 }

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Composition;
 using System.Composition.Convention;
 using System.Composition.Hosting;
+using System.Composition.Hosting.Core;
 using System.Linq;
 using System.Reflection;
 
@@ -52,6 +53,11 @@ namespace Nancy.Bootstrappers.Mef2
         {
             builderActions(_conventionBuilder);
             _compositionContext = null;
+        }
+
+        public object GetExport(CompositionContract compositionContract)
+        {
+            return SafeGetCompositionContext().GetExport(compositionContract);
         }
     }
 }
