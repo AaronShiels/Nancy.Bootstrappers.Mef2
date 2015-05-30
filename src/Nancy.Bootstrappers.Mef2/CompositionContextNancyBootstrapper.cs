@@ -27,8 +27,6 @@ namespace Nancy.Bootstrappers.Mef2
         protected CompositionContext ApplicationContainer { get; set; }
         protected ExportFactory<CompositionContext> RequestContainerFactory;
 
-        public Type ModelBinderLocator { get; private set; }
-
         public CompositionContextNancyBootstrapper()
         {
             ApplicationPipelines = new Pipelines();
@@ -62,11 +60,18 @@ namespace Nancy.Bootstrappers.Mef2
 
             instanceRegistrations.AddRange(Conventions.GetInstanceRegistrations().Concat(GetAdditionalInstances()));
 
-            //TODO RegisterRegistrationTasks(compositionConventions, instanceRegistrations, GetRegistrationTasks()); exporting and importing
+            RegisterRegistrationTasks(typeRegistrations, instanceRegistrations, GetRegistrationTasks(typeRegistrations, instanceRegistrations));
 
-            var internalTypeExportConventions = GetInternalCompositionConventions(typeRegistrations);
-            var internalInstanceExportProvider = GetInternalInstanceExportDescriptorProvider(instanceRegistrations);
-            ApplicationContainer = CreateApplicationContainer(internalTypeExportConventions, InternalAssemblies, new[] { internalInstanceExportProvider });
+            var conventions = GetInternalCompositionConventions(typeRegistrations);
+            ConfigureApplicationCompositionConventions(conventions);
+
+            var providers = new[] { GetInternalInstanceExportDescriptorProvider(instanceRegistrations) }
+                            .Concat(ConfigureApplicationExportDescriptorProviders());
+
+            var assemblies = GetInternalAssemblies()
+                                .Union(ConfigureApplicationCompositionAssemblies());
+            
+            ApplicationContainer = CreateApplicationContainer(conventions, assemblies, providers);
 
             foreach (var applicationStartupTask in GetApplicationStartupTasks().ToList())
             {
@@ -108,12 +113,7 @@ namespace Nancy.Bootstrappers.Mef2
 
             _initialised = true;
         }
-
-        public IEnumerable<T> GetThingsForTesting<T>()
-        {
-            return ApplicationContainer.GetExports<T>();
-        }
-
+        
         public void Dispose()
         {
             // Prevent StackOverflowException if ApplicationContainer.Dispose re-triggers this Dispose
@@ -146,9 +146,18 @@ namespace Nancy.Bootstrappers.Mef2
             }
         }
 
+        public INancyModule GetModule(Type moduleType, NancyContext context)
+        {
+            var requestContainer = GetConfiguredRequestContainer(context);
+
+            return requestContainer.GetExport(moduleType) as INancyModule;
+        }
+
         public IEnumerable<INancyModule> GetAllModules(NancyContext context)
         {
-            return ApplicationContainer.GetExports<INancyModule>();
+            var requestContainer = GetConfiguredRequestContainer(context);
+
+            return requestContainer.GetExports<INancyModule>();
         }
 
         public INancyEngine GetEngine()
@@ -163,14 +172,6 @@ namespace Nancy.Bootstrappers.Mef2
             engine.RequestPipelinesFactory = InitializeRequestPipelines;
 
             return engine;
-        }
-
-        protected IEnumerable<Assembly> InternalAssemblies
-        {
-            get
-            {
-                return new[] { typeof(INancyEngine).Assembly };
-            }
         }
 
         protected virtual IPipelines InitializeRequestPipelines(NancyContext context)
@@ -218,71 +219,12 @@ namespace Nancy.Bootstrappers.Mef2
             }
         }
 
-        public INancyModule GetModule(Type moduleType, NancyContext context)
-        {
-            return ApplicationContainer.GetExport(moduleType) as INancyModule;
-        }
-
-        protected virtual void RegisterTypes(ConventionBuilder conventionBuilder, IEnumerable<TypeRegistration> typeRegistrations)
-        {
-            foreach (var typeRegistration in typeRegistrations)
-            {
-                switch (typeRegistration.Lifetime)
-                {
-                    case Lifetime.Transient:
-                        conventionBuilder.ForType(typeRegistration.ImplementationType).Export(ct => ct.AsContractType(typeRegistration.RegistrationType));
-                        break;
-                    case Lifetime.Singleton:
-                        conventionBuilder.ForType(typeRegistration.ImplementationType).Export(ct => ct.AsContractType(typeRegistration.RegistrationType)).Shared();
-                        break;
-                    case Lifetime.PerRequest:
-                        conventionBuilder.ForType(typeRegistration.ImplementationType).Export(ct => ct.AsContractType(typeRegistration.RegistrationType)).Shared(PerRequestBoundary);
-                        break;
-                    default:
-                        throw new ArgumentOutOfRangeException();
-                }
-            }
-        }
-
         protected IDiagnostics GetDiagnostics()
         {
             return ApplicationContainer.GetExport<IDiagnostics>();
         }
 
-        protected virtual void RegisterCollectionTypes(ConventionBuilder conventionBuilder, IEnumerable<CollectionTypeRegistration> collectionTypeRegistrations)
-        {
-            foreach (var collectionTypeRegistration in collectionTypeRegistrations)
-            {
-                switch (collectionTypeRegistration.Lifetime)
-                {
-                    case Lifetime.Transient:
-                        foreach (var implementationType in collectionTypeRegistration.ImplementationTypes)
-                            conventionBuilder.ForType(implementationType).Export(ct => ct.AsContractType(collectionTypeRegistration.RegistrationType));
-                        break;
-                    case Lifetime.Singleton:
-                        foreach (var implementationType in collectionTypeRegistration.ImplementationTypes)
-                            conventionBuilder.ForType(implementationType).Export(ct => ct.AsContractType(collectionTypeRegistration.RegistrationType)).Shared();
-                        break;
-                    case Lifetime.PerRequest:
-                        foreach (var implementationType in collectionTypeRegistration.ImplementationTypes)
-                            conventionBuilder.ForType(implementationType).Export(ct => ct.AsContractType(collectionTypeRegistration.RegistrationType)).Shared(PerRequestBoundary);
-                        break;
-                    default:
-                        throw new ArgumentOutOfRangeException();
-                }
-            }
-        }
-
-        protected virtual void RegisterModules(ConventionBuilder conventionBuilder)
-        {
-            conventionBuilder
-                .ForTypesMatching(t => typeof(INancyModule).IsAssignableFrom(t) && !InternalAssemblies.Contains(t.Assembly) && t != typeof(DiagnosticModule))
-                .Export()
-                .ExportInterfaces()
-                .Shared(PerRequestBoundary);
-        }
-
-        protected virtual void RegisterRegistrationTasks(ConventionBuilder conventionBuilder, List<InstanceRegistration> instanceRegistrations, IEnumerable<IRegistrations> registrationTasks)
+        protected virtual void RegisterRegistrationTasks(List<TypeRegistration> typeRegistrations, List<InstanceRegistration> instanceRegistrations, IEnumerable<IRegistrations> registrationTasks)
         {
             foreach (var registrationTask in registrationTasks.ToList())
             {
@@ -290,14 +232,14 @@ namespace Nancy.Bootstrappers.Mef2
 
                 if (applicationTypeRegistrations != null)
                 {
-                    RegisterTypes(conventionBuilder, applicationTypeRegistrations);
+                    typeRegistrations.AddRange(applicationTypeRegistrations);
                 }
 
                 var applicationCollectionRegistrations = registrationTask.CollectionTypeRegistrations;
 
                 if (applicationCollectionRegistrations != null)
                 {
-                    RegisterCollectionTypes(conventionBuilder, applicationCollectionRegistrations);
+                    applicationCollectionRegistrations.SelectMany(ctr => ctr.ImplementationTypes.Select(it => new TypeRegistration(ctr.RegistrationType, it, ctr.Lifetime)));
                 }
 
                 var applicationInstanceRegistrations = registrationTask.InstanceRegistrations;
@@ -462,9 +404,14 @@ namespace Nancy.Bootstrappers.Mef2
             get { return "PerRequest"; }
         }
 
-        protected virtual IEnumerable<IRegistrations> GetRegistrationTasks()
+        protected virtual IEnumerable<IRegistrations> GetRegistrationTasks(IList<TypeRegistration> typeRegistrations, IList<InstanceRegistration> instanceRegistrations)
         {
-            return ApplicationContainer.GetExports<IRegistrations>();
+            var internalTypeExportConventions = GetInternalCompositionConventions(typeRegistrations);
+            var internalInstanceExportProvider = GetInternalInstanceExportDescriptorProvider(instanceRegistrations);
+            var internalAssemblies = GetInternalAssemblies();
+            var temporaryContainer = CreateContainerInternal(internalTypeExportConventions, internalAssemblies, new[] { internalInstanceExportProvider });
+
+            return temporaryContainer.GetExports<IRegistrations>();
         }
 
         private readonly string _contextKey = typeof(CompositionContext).FullName + "BootstrapperChildContainer";
@@ -509,12 +456,12 @@ namespace Nancy.Bootstrappers.Mef2
             return RequestContainerFactory.CreateExport().Value;
         }
 
-        protected virtual CompositionContext CreateApplicationContainer(ConventionBuilder internalExportConventions, IEnumerable<Assembly> internalExportAssemblies, IEnumerable<ExportDescriptorProvider> internalExportDescriptorProviders)
+        private CompositionContext CreateContainerInternal(ConventionBuilder conventions, IEnumerable<Assembly> assemblies, IEnumerable<ExportDescriptorProvider> providers)
         {
-            var containerConfiguration = new ContainerConfiguration().WithDefaultConventions(internalExportConventions)
-                                                                    .WithAssemblies(internalExportAssemblies);
+            var containerConfiguration = new ContainerConfiguration().WithDefaultConventions(conventions)
+                                                                    .WithAssemblies(assemblies);
 
-            foreach (var provider in internalExportDescriptorProviders)
+            foreach (var provider in providers)
                 containerConfiguration.WithProvider(provider);
 
             var container = containerConfiguration.CreateContainer();
@@ -522,7 +469,12 @@ namespace Nancy.Bootstrappers.Mef2
             return container;
         }
 
-        protected virtual ConventionBuilder GetInternalCompositionConventions(IList<TypeRegistration> typeRegistrations)
+        protected virtual CompositionContext CreateApplicationContainer(ConventionBuilder conventions, IEnumerable<Assembly> assemblies, IEnumerable<ExportDescriptorProvider> providers)
+        {
+            return CreateContainerInternal(conventions, assemblies, providers);
+        }
+
+        private ConventionBuilder GetInternalCompositionConventions(IList<TypeRegistration> typeRegistrations)
         {
             var conventionBuilder = new ConventionBuilder();
 
@@ -560,12 +512,38 @@ namespace Nancy.Bootstrappers.Mef2
                                     builderActions(conventionBuilder.ForType(x.PartType));
                                 });
 
+            conventionBuilder
+                .ForTypesMatching(t => typeof(INancyModule).IsAssignableFrom(t) && !GetInternalAssemblies().Contains(t.Assembly) && t != typeof(DiagnosticModule))
+                .Export()
+                .ExportInterfaces()
+                .Shared(PerRequestBoundary);
+
             return conventionBuilder;
         }
 
-        protected virtual ExportDescriptorProvider GetInternalInstanceExportDescriptorProvider(IEnumerable<InstanceRegistration> instanceRegistrations)
+        private ExportDescriptorProvider GetInternalInstanceExportDescriptorProvider(IEnumerable<InstanceRegistration> instanceRegistrations)
         {
             return new InstanceExportDescriptorProvider(instanceRegistrations);
+        }
+
+        private IEnumerable<Assembly> GetInternalAssemblies()
+        {
+            return new[] { typeof(INancyEngine).Assembly };
+        }
+
+        protected virtual void ConfigureApplicationCompositionConventions(ConventionBuilder conventionBuilder)
+        {
+
+        }
+
+        protected virtual IEnumerable<Assembly> ConfigureApplicationCompositionAssemblies()
+        {
+            return new[] { Assembly.GetExecutingAssembly() };
+        }
+
+        protected virtual IEnumerable<ExportDescriptorProvider> ConfigureApplicationExportDescriptorProviders()
+        {
+            return Enumerable.Empty<ExportDescriptorProvider>();
         }
     }
 }
