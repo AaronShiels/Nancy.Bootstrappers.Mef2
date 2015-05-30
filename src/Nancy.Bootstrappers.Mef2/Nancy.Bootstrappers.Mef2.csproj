@@ -61,12 +61,8 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="InstanceExportDescriptorProvider.cs" />
-    <Compile Include="Old\TrivialCompositionContextNancyBootstrapper.cs" />
-    <Compile Include="Old\ExtendableCompositionContextContainer.cs" />
     <Compile Include="CompositionContextNancyBootstrapper.cs" />
-    <Compile Include="Old\ICompositionContextContainer.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="Old\ReadonlyCompositionContextContainer.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\dependencies\Nancy\src\Nancy\Nancy.csproj">

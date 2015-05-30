@@ -44,14 +44,17 @@ namespace Nancy.Bootstrappers.Mef2
                 throw new InvalidOperationException("Configuration is invalid");
 
             var compositionConventions = new ConventionBuilder();
+            var instanceRegistrations = new List<InstanceRegistration>();
+            var typeRegistrations = new List<TypeRegistration>();
+            var collectionTypeRegistrations = new List<CollectionTypeRegistration>();
 
-            RegisterBootstrapperTypes(compositionConventions);
+            instanceRegistrations.Add(new InstanceRegistration(typeof(INancyModuleCatalog), this));
 
-            var typeRegistrations = InternalConfiguration.GetTypeRegistations()
-                                        .Concat(GetAdditionalTypes());
+            typeRegistrations.AddRange(InternalConfiguration.GetTypeRegistations());
+            typeRegistrations.AddRange(GetAdditionalTypes());
 
-            var collectionTypeRegistrations = InternalConfiguration.GetCollectionTypeRegistrations()
-                                                  .Concat(GetApplicationCollections());
+            collectionTypeRegistrations.AddRange(InternalConfiguration.GetCollectionTypeRegistrations());
+            collectionTypeRegistrations.AddRange(GetApplicationCollections());
 
             ConfigureConventions(Conventions);
             var conventionValidationResult = Conventions.Validate();
@@ -60,9 +63,8 @@ namespace Nancy.Bootstrappers.Mef2
                 throw new InvalidOperationException(string.Format("Conventions are invalid:\n\n{0}", conventionValidationResult.Item2));
             }
 
-            var instanceRegistrations = Conventions.GetInstanceRegistrations()
-                                            .Concat(GetAdditionalInstances())
-                                            .ToList();
+            instanceRegistrations.AddRange(Conventions.GetInstanceRegistrations());
+            instanceRegistrations.AddRange(GetAdditionalInstances());
 
             RegisterTypes(compositionConventions, typeRegistrations);
             RegisterCollectionTypes(compositionConventions, collectionTypeRegistrations);
@@ -111,6 +113,11 @@ namespace Nancy.Bootstrappers.Mef2
             GetDiagnostics().Initialize(ApplicationPipelines);
 
             _initialised = true;
+        }
+
+        public IEnumerable<T> GetThingsForTesting<T>()
+        {
+            return ApplicationContainer.GetExports<T>();
         }
 
         public void Dispose()
@@ -220,11 +227,6 @@ namespace Nancy.Bootstrappers.Mef2
         public INancyModule GetModule(Type moduleType, NancyContext context)
         {
             return ApplicationContainer.GetExport(moduleType) as INancyModule;
-        }
-
-        protected virtual void RegisterBootstrapperTypes(ConventionBuilder conventionBuilder)
-        {
-            conventionBuilder.ForType<TrivialCompositionContextNancyBootstrapper>().Export<INancyModuleCatalog>().Shared();
         }
 
         protected virtual void RegisterTypes(ConventionBuilder conventionBuilder, IEnumerable<TypeRegistration> typeRegistrations)
@@ -411,10 +413,9 @@ namespace Nancy.Bootstrappers.Mef2
             }
         }
 
-        private IRootPathProvider _rootPathProvider;
         protected virtual IRootPathProvider RootPathProvider
         {
-            get { return _rootPathProvider ?? (_rootPathProvider = GetRootPathProvider()); }
+            get { return new DefaultRootPathProvider(); }
         }
         
         private IEnumerable<TypeRegistration> GetAdditionalTypes()
@@ -456,23 +457,6 @@ namespace Nancy.Bootstrappers.Mef2
 
         protected virtual void ConfigureConventions(NancyConventions nancyConventions)
         {
-        }
-
-        private static IRootPathProvider GetRootPathProvider()
-        {
-            var providerTypes = AppDomainAssemblyTypeScanner
-                .TypesOf<IRootPathProvider>(ScanMode.ExcludeNancy)
-                .ToArray();
-
-            if (providerTypes.Length > 1)
-            {
-                throw new MultipleRootPathProvidersLocatedException(providerTypes);
-            }
-
-            var providerType =
-                providerTypes.SingleOrDefault() ?? typeof(DefaultRootPathProvider);
-
-            return Activator.CreateInstance(providerType) as IRootPathProvider;
         }
 
         protected virtual string PerRequestBoundary
