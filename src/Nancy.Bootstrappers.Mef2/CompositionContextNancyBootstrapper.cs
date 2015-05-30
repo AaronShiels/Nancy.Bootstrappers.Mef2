@@ -43,18 +43,15 @@ namespace Nancy.Bootstrappers.Mef2
             if (!InternalConfiguration.IsValid)
                 throw new InvalidOperationException("Configuration is invalid");
 
-            var compositionConventions = new ConventionBuilder();
-            var instanceRegistrations = new List<InstanceRegistration>();
-            var typeRegistrations = new List<TypeRegistration>();
-            var collectionTypeRegistrations = new List<CollectionTypeRegistration>();
+            var instanceRegistrations = new[] { new InstanceRegistration(typeof(INancyModuleCatalog), this) }.ToList();
 
-            instanceRegistrations.Add(new InstanceRegistration(typeof(INancyModuleCatalog), this));
-
-            typeRegistrations.AddRange(InternalConfiguration.GetTypeRegistations());
-            typeRegistrations.AddRange(GetAdditionalTypes());
-
-            collectionTypeRegistrations.AddRange(InternalConfiguration.GetCollectionTypeRegistrations());
-            collectionTypeRegistrations.AddRange(GetApplicationCollections());
+            var typeRegistrations = InternalConfiguration.GetTypeRegistations()
+                                        .Concat(GetAdditionalTypes())
+                                        .Concat(InternalConfiguration.GetCollectionTypeRegistrations()
+                                            .Concat(GetApplicationCollections())
+                                            .SelectMany(ctr => ctr.ImplementationTypes
+                                                .Select(it => new TypeRegistration(ctr.RegistrationType, it, ctr.Lifetime))))
+                                        .ToList();
 
             ConfigureConventions(Conventions);
             var conventionValidationResult = Conventions.Validate();
@@ -63,22 +60,19 @@ namespace Nancy.Bootstrappers.Mef2
                 throw new InvalidOperationException(string.Format("Conventions are invalid:\n\n{0}", conventionValidationResult.Item2));
             }
 
-            instanceRegistrations.AddRange(Conventions.GetInstanceRegistrations());
-            instanceRegistrations.AddRange(GetAdditionalInstances());
+            instanceRegistrations.AddRange(Conventions.GetInstanceRegistrations().Concat(GetAdditionalInstances()));
 
-            RegisterTypes(compositionConventions, typeRegistrations);
-            RegisterCollectionTypes(compositionConventions, collectionTypeRegistrations);
-            RegisterModules(compositionConventions);
-            //RegisterRegistrationTasks(compositionConventions, instanceRegistrations, GetRegistrationTasks()); exporting and importing
+            //TODO RegisterRegistrationTasks(compositionConventions, instanceRegistrations, GetRegistrationTasks()); exporting and importing
 
-            var exportDescriptorProviders = new[] { GetInstanceExportDescriptorProvider(instanceRegistrations) };
-            ApplicationContainer = CreateApplicationContainer(compositionConventions, InternalAssemblies, exportDescriptorProviders);
+            var internalTypeExportConventions = GetInternalCompositionConventions(typeRegistrations);
+            var internalInstanceExportProvider = GetInternalInstanceExportDescriptorProvider(instanceRegistrations);
+            ApplicationContainer = CreateApplicationContainer(internalTypeExportConventions, InternalAssemblies, new[] { internalInstanceExportProvider });
 
             foreach (var applicationStartupTask in GetApplicationStartupTasks().ToList())
             {
                 applicationStartupTask.Initialize(ApplicationPipelines);
             }
-            
+
             ApplicationStartup(ApplicationContainer, ApplicationPipelines);
 
             RequestStartupTaskTypeCache = RequestStartupTasks.ToArray();
@@ -249,7 +243,7 @@ namespace Nancy.Bootstrappers.Mef2
                 }
             }
         }
-        
+
         protected IDiagnostics GetDiagnostics()
         {
             return ApplicationContainer.GetExport<IDiagnostics>();
@@ -340,7 +334,7 @@ namespace Nancy.Bootstrappers.Mef2
                 return AppDomainAssemblyTypeScanner.TypesOf<IViewEngine>();
             }
         }
-        
+
         protected virtual IEnumerable<Type> ModelBinders
         {
             get
@@ -348,7 +342,7 @@ namespace Nancy.Bootstrappers.Mef2
                 return AppDomainAssemblyTypeScanner.TypesOf<IModelBinder>();
             }
         }
-        
+
         protected virtual IEnumerable<Type> TypeConverters
         {
             get
@@ -356,27 +350,27 @@ namespace Nancy.Bootstrappers.Mef2
                 return AppDomainAssemblyTypeScanner.TypesOf<ITypeConverter>(ScanMode.ExcludeNancy);
             }
         }
-        
+
         protected virtual IEnumerable<Type> BodyDeserializers
         {
             get { return AppDomainAssemblyTypeScanner.TypesOf<IBodyDeserializer>(ScanMode.ExcludeNancy); }
         }
-        
+
         protected virtual IEnumerable<Type> ApplicationStartupTasks
         {
             get { return AppDomainAssemblyTypeScanner.TypesOf<IApplicationStartup>(); }
         }
-        
+
         protected virtual IEnumerable<Type> RequestStartupTasks
         {
             get { return AppDomainAssemblyTypeScanner.TypesOf<IRequestStartup>(); }
         }
-        
+
         protected virtual IEnumerable<Type> RegistrationTasks
         {
             get { return AppDomainAssemblyTypeScanner.TypesOf<IRegistrations>(); }
         }
-        
+
         protected virtual IEnumerable<Type> ModelValidatorFactories
         {
             get { return AppDomainAssemblyTypeScanner.TypesOf<IModelValidatorFactory>(); }
@@ -417,14 +411,14 @@ namespace Nancy.Bootstrappers.Mef2
         {
             get { return new DefaultRootPathProvider(); }
         }
-        
+
         private IEnumerable<TypeRegistration> GetAdditionalTypes()
         {
             return new[] {
                 new TypeRegistration(typeof(IViewRenderer), typeof(DefaultViewRenderer))
             };
         }
-        
+
         private IEnumerable<CollectionTypeRegistration> GetApplicationCollections()
         {
             return new[]
@@ -441,12 +435,16 @@ namespace Nancy.Bootstrappers.Mef2
 
         private IEnumerable<InstanceRegistration> GetAdditionalInstances()
         {
+            //needed because MEF2 doesn't do magic func injection
+            Func<IRouteCache> routeCacheFunc = () => ApplicationContainer.GetExport<IRouteCache>();
+
             return new[] {
                 new InstanceRegistration(typeof(CryptographyConfiguration), CryptographyConfiguration),
                 new InstanceRegistration(typeof(NancyInternalConfiguration), InternalConfiguration),
                 new InstanceRegistration(typeof(DiagnosticsConfiguration), DiagnosticsConfiguration),
                 new InstanceRegistration(typeof(IRootPathProvider), RootPathProvider),
-                new InstanceRegistration(typeof(IFileSystemReader), FileSystemReader)
+                new InstanceRegistration(typeof(IFileSystemReader), FileSystemReader),
+                new InstanceRegistration(typeof(Func<IRouteCache>), routeCacheFunc)
             };
         }
 
@@ -511,12 +509,12 @@ namespace Nancy.Bootstrappers.Mef2
             return RequestContainerFactory.CreateExport().Value;
         }
 
-        protected virtual CompositionContext CreateApplicationContainer(ConventionBuilder conventionBuilder, IEnumerable<Assembly> assemblies, IEnumerable<ExportDescriptorProvider> exportDescriptorProviders)
+        protected virtual CompositionContext CreateApplicationContainer(ConventionBuilder internalExportConventions, IEnumerable<Assembly> internalExportAssemblies, IEnumerable<ExportDescriptorProvider> internalExportDescriptorProviders)
         {
-            var containerConfiguration = new ContainerConfiguration().WithDefaultConventions(conventionBuilder)
-                                                                    .WithAssemblies(assemblies);
+            var containerConfiguration = new ContainerConfiguration().WithDefaultConventions(internalExportConventions)
+                                                                    .WithAssemblies(internalExportAssemblies);
 
-            foreach (var provider in exportDescriptorProviders)
+            foreach (var provider in internalExportDescriptorProviders)
                 containerConfiguration.WithProvider(provider);
 
             var container = containerConfiguration.CreateContainer();
@@ -524,7 +522,48 @@ namespace Nancy.Bootstrappers.Mef2
             return container;
         }
 
-        protected virtual ExportDescriptorProvider GetInstanceExportDescriptorProvider(IEnumerable<InstanceRegistration> instanceRegistrations)
+        protected virtual ConventionBuilder GetInternalCompositionConventions(IList<TypeRegistration> typeRegistrations)
+        {
+            var conventionBuilder = new ConventionBuilder();
+
+            typeRegistrations.GroupBy(tr => tr.ImplementationType)
+                                .Select(g =>
+                                {
+                                    var partType = g.Key;
+
+                                    if (g.Select(tr => tr.Lifetime).Distinct().Count() != 1)
+                                        throw new InvalidOperationException("Conflicting lifetimes for an exported part");
+
+                                    var interfaces = g.Select(tr => tr.RegistrationType).Where(rt => rt.IsInterface).Distinct();
+                                    var asSelf = g.Select(tr => tr.RegistrationType).Any(rt => rt == partType);
+                                    var lifeTime = g.Select(tr => tr.Lifetime).Distinct().Single();
+
+                                    return new { PartType = partType, Interfaces = interfaces, ExportSelf = asSelf, Lifetime = lifeTime };
+                                })
+                                .ToList()
+                                .ForEach(x =>
+                                {
+                                    Action<PartConventionBuilder> builderActions = (pcb) =>
+                                    {
+                                        if (x.ExportSelf)
+                                            pcb.Export();
+
+                                        if (x.Interfaces.Any())
+                                            pcb.ExportInterfaces(t => x.Interfaces.Contains(t));
+
+                                        if (x.Lifetime == Lifetime.Singleton)
+                                            pcb.Shared();
+                                        else if (x.Lifetime == Lifetime.PerRequest)
+                                            pcb.Shared(PerRequestBoundary);
+                                    };
+
+                                    builderActions(conventionBuilder.ForType(x.PartType));
+                                });
+
+            return conventionBuilder;
+        }
+
+        protected virtual ExportDescriptorProvider GetInternalInstanceExportDescriptorProvider(IEnumerable<InstanceRegistration> instanceRegistrations)
         {
             return new InstanceExportDescriptorProvider(instanceRegistrations);
         }
