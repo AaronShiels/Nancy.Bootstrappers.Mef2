@@ -1,4 +1,5 @@
 ﻿using Nancy.Bootstrapper;
+using System;
 using System.Collections.Generic;
 using System.Composition.Hosting.Core;
 using System.Linq;
@@ -7,20 +8,23 @@ namespace Nancy.Bootstrappers.Mef2
 {
     public class InstanceExportDescriptorProvider : ExportDescriptorProvider
     {
-        private readonly IEnumerable<InstanceRegistration> _instanceRegistrations;
+        private readonly IDictionary<Type, object> _instanceRegistrations;
 
-        public InstanceExportDescriptorProvider(IEnumerable<InstanceRegistration> instanceRegistrations)
+        public InstanceExportDescriptorProvider()
         {
-            _instanceRegistrations = instanceRegistrations;
+            _instanceRegistrations = new Dictionary<Type, object>();
+        }
+
+        public void RegisterExport(Type type, object instance)
+        {
+            _instanceRegistrations.Add(type, instance);
         }
 
         public override IEnumerable<ExportDescriptorPromise> GetExportDescriptors(CompositionContract contract, DependencyAccessor descriptorAccessor)
         {
             var type = contract.ContractType;
 
-            var instanceRegistration = _instanceRegistrations.SingleOrDefault(ir => ir.RegistrationType == type);
-
-            if (instanceRegistration == null)
+            if (!_instanceRegistrations.ContainsKey(type))
                 return NoExportDescriptors;
 
             return new[]
@@ -29,7 +33,7 @@ namespace Nancy.Bootstrappers.Mef2
                 "Registered Instances",
                 false,
                 NoDependencies,
-                _ => ExportDescriptor.Create((c, o) => instanceRegistration.Implementation, NoMetadata))
+                _ => ExportDescriptor.Create((c, o) => _instanceRegistrations[type], NoMetadata))
             };
         }
     }

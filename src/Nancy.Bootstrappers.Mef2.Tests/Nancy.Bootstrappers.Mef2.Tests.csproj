@@ -39,6 +39,10 @@
       <HintPath>..\packages\NUnit.2.6.4\lib\nunit.framework.dll</HintPath>
       <Private>True</Private>
     </Reference>
+    <Reference Include="Shouldly, Version=2.5.0.0, Culture=neutral, PublicKeyToken=6042cbcb05cbc941, processorArchitecture=MSIL">
+      <HintPath>..\packages\Shouldly.2.5.0\lib\net40\Shouldly.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Composition.AttributedModel, Version=1.0.30.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
       <HintPath>..\packages\Microsoft.Composition.1.0.30\lib\portable-net45+win8+wp8+wpa81\System.Composition.AttributedModel.dll</HintPath>
@@ -70,8 +74,17 @@
     <Otherwise />
   </Choose>
   <ItemGroup>
-    <Compile Include="CompositionTests.cs" />
-    <Compile Include="ExampleCompositionContextNancyBootstrapper.cs" />
+    <Compile Include="CompositionContextNancyBoostrapperSpecs.cs" />
+    <Compile Include="Fakes\Dependencies\IInstanceDependency.cs" />
+    <Compile Include="Fakes\Dependencies\InstanceDependency.cs" />
+    <Compile Include="Fakes\Dependencies\IPerRequestDependency.cs" />
+    <Compile Include="Fakes\Dependencies\PerRequestDependency.cs" />
+    <Compile Include="Fakes\Dependencies\TransientDependency.cs" />
+    <Compile Include="Fakes\FakeCompositionContextNancyBootstrapper.cs" />
+    <Compile Include="Fakes\FakeNancyModule.cs" />
+    <Compile Include="Fakes\Dependencies\ITransientDependency.cs" />
+    <Compile Include="Fakes\Dependencies\SingletonDependency.cs" />
+    <Compile Include="Fakes\Dependencies\ISingletonDependency.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

@@ -61,12 +61,14 @@ namespace Nancy.Bootstrappers.Mef2
             RegisterRegistrationTasks(typeRegistrations, instanceRegistrations, GetRegistrationTasks(typeRegistrations, instanceRegistrations));
 
             var conventions = GetInternalCompositionConventions(typeRegistrations);
-            var providers = new[] { GetInternalInstanceExportDescriptorProvider(instanceRegistrations) };
+            var instanceProvider = GetInternalInstanceExportDescriptorProvider(instanceRegistrations);
             var assemblies = InternalAssemblies.ToList();
 
             ConfigureCompositionConventions(conventions);
-            ConfigureCompositionExportDescriptorProviders(providers);
             ConfigureCompositionAssemblies(assemblies);
+            ConfigureInstanceExportDescriptorProvider(instanceProvider);
+            var providers = new[] { instanceProvider };
+            ConfigureCompositionExportDescriptorProviders(providers);
 
             ApplicationContainer = CreateApplicationContainer(conventions, assemblies, providers);
 
@@ -497,9 +499,14 @@ namespace Nancy.Bootstrappers.Mef2
             return conventionBuilder;
         }
 
-        private ExportDescriptorProvider GetInternalInstanceExportDescriptorProvider(IEnumerable<InstanceRegistration> instanceRegistrations)
+        private InstanceExportDescriptorProvider GetInternalInstanceExportDescriptorProvider(IEnumerable<InstanceRegistration> instanceRegistrations)
         {
-            return new InstanceExportDescriptorProvider(instanceRegistrations);
+            var provider = new InstanceExportDescriptorProvider();
+
+            foreach (var registration in instanceRegistrations)
+                provider.RegisterExport(registration.RegistrationType, registration.Implementation);
+
+            return provider;
         }
 
         protected virtual IEnumerable<Assembly> InternalAssemblies
@@ -522,6 +529,8 @@ namespace Nancy.Bootstrappers.Mef2
 
         protected virtual void ConfigureCompositionConventions(ConventionBuilder conventions)
         {
+            //Exports interfaces of all Nancy assemblies (other than Nancy itself) to achieve minimum parity to AutoRegister
+            //Deliberately excludes user-provided assemblies; this should be configured by them
             conventions.ForTypesMatching(t => InternalAssemblies.Where(a => a != typeof(NancyEngine).Assembly).Contains(t.Assembly))
                         .SelectConstructor(cis => cis.OrderBy(ci => ci.GetParameters().Length).First())
                         .ExportInterfaces()
@@ -530,7 +539,13 @@ namespace Nancy.Bootstrappers.Mef2
 
         protected virtual void ConfigureCompositionAssemblies(IList<Assembly> assemblies)
         {
+            //Adds assembly of CCNBootstrapper to cover trivial projects, should be replaced with explicit list
             assemblies.Add(this.GetType().Assembly);
+        }
+
+        protected virtual void ConfigureInstanceExportDescriptorProvider(InstanceExportDescriptorProvider provider)
+        {
+
         }
 
         protected virtual void ConfigureCompositionExportDescriptorProviders(IList<ExportDescriptorProvider> assemblies)
