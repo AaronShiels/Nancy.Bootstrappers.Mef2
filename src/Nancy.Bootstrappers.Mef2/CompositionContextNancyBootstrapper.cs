@@ -2,10 +2,8 @@
 using Nancy.Conventions;
 using Nancy.Cryptography;
 using Nancy.Diagnostics;
-using Nancy.Localization;
 using Nancy.ModelBinding;
 using Nancy.Routing;
-using Nancy.Security;
 using Nancy.Validation;
 using Nancy.ViewEngines;
 using System;
@@ -63,20 +61,17 @@ namespace Nancy.Bootstrappers.Mef2
             RegisterRegistrationTasks(typeRegistrations, instanceRegistrations, GetRegistrationTasks(typeRegistrations, instanceRegistrations));
 
             var conventions = GetInternalCompositionConventions(typeRegistrations);
-            ConfigureApplicationCompositionConventions(conventions);
+            var providers = new[] { GetInternalInstanceExportDescriptorProvider(instanceRegistrations) };
+            var assemblies = InternalAssemblies.ToList();
 
-            var providers = new[] { GetInternalInstanceExportDescriptorProvider(instanceRegistrations) }
-                            .Concat(ConfigureApplicationExportDescriptorProviders());
+            ConfigureCompositionConventions(conventions);
+            ConfigureCompositionExportDescriptorProviders(providers);
+            ConfigureCompositionAssemblies(assemblies);
 
-            var assemblies = GetInternalAssemblies()
-                                .Union(ConfigureApplicationCompositionAssemblies());
-            
             ApplicationContainer = CreateApplicationContainer(conventions, assemblies, providers);
 
             foreach (var applicationStartupTask in GetApplicationStartupTasks().ToList())
-            {
                 applicationStartupTask.Initialize(ApplicationPipelines);
-            }
 
             ApplicationStartup(ApplicationContainer, ApplicationPipelines);
 
@@ -116,26 +111,18 @@ namespace Nancy.Bootstrappers.Mef2
         
         public void Dispose()
         {
-            // Prevent StackOverflowException if ApplicationContainer.Dispose re-triggers this Dispose
             if (_disposing)
-            {
                 return;
-            }
-
-            // Only dispose if we're initialised, prevents possible issue with recursive disposing.
+            
             if (!_initialised)
-            {
                 return;
-            }
 
             _disposing = true;
 
             var container = ApplicationContainer as IDisposable;
 
             if (container == null)
-            {
                 return;
-            }
 
             try
             {
@@ -167,7 +154,7 @@ namespace Nancy.Bootstrappers.Mef2
                 throw new InvalidOperationException("Bootstrapper is not initialised. Call Initialise before GetEngine");
             }
 
-            var engine = this.SafeGetNancyEngineInstance();
+            var engine = ApplicationContainer.GetExport<INancyEngine>();
 
             engine.RequestPipelinesFactory = InitializeRequestPipelines;
 
@@ -203,20 +190,6 @@ namespace Nancy.Bootstrappers.Mef2
         private IEnumerable<IRequestStartup> GetRequestStartupTasks(CompositionContext container, Type[] requestStartupTypes)
         {
             return container.GetExports<IRequestStartup>();
-        }
-
-        private INancyEngine SafeGetNancyEngineInstance()
-        {
-            try
-            {
-                return ApplicationContainer.GetExport<INancyEngine>();
-            }
-            catch (Exception ex)
-            {
-                throw new InvalidOperationException(
-                    "Something went wrong when trying to satisfy one of the dependencies during composition, make sure that you've registered all new dependencies in the container and inspect the innerexception for more details.",
-                    ex);
-            }
         }
 
         protected IDiagnostics GetDiagnostics()
@@ -406,9 +379,10 @@ namespace Nancy.Bootstrappers.Mef2
 
         protected virtual IEnumerable<IRegistrations> GetRegistrationTasks(IList<TypeRegistration> typeRegistrations, IList<InstanceRegistration> instanceRegistrations)
         {
+            //creating a temporary container with all registrations up until this point in order to get back composed IRegistrations
             var internalTypeExportConventions = GetInternalCompositionConventions(typeRegistrations);
             var internalInstanceExportProvider = GetInternalInstanceExportDescriptorProvider(instanceRegistrations);
-            var internalAssemblies = GetInternalAssemblies();
+            var internalAssemblies = InternalAssemblies;
             var temporaryContainer = CreateContainerInternal(internalTypeExportConventions, internalAssemblies, new[] { internalInstanceExportProvider });
 
             return temporaryContainer.GetExports<IRegistrations>();
@@ -513,7 +487,9 @@ namespace Nancy.Bootstrappers.Mef2
                                 });
 
             conventionBuilder
-                .ForTypesMatching(t => typeof(INancyModule).IsAssignableFrom(t) && !GetInternalAssemblies().Contains(t.Assembly) && t != typeof(DiagnosticModule))
+                .ForTypesMatching(t => typeof(INancyModule).IsAssignableFrom(t)
+                    && t.Assembly != typeof(NancyEngine).Assembly
+                    && t != typeof(DiagnosticModule))
                 .Export()
                 .ExportInterfaces()
                 .Shared(PerRequestBoundary);
@@ -526,24 +502,40 @@ namespace Nancy.Bootstrappers.Mef2
             return new InstanceExportDescriptorProvider(instanceRegistrations);
         }
 
-        private IEnumerable<Assembly> GetInternalAssemblies()
+        protected virtual IEnumerable<Assembly> InternalAssemblies
         {
-            return new[] { typeof(INancyEngine).Assembly };
+            get
+            {
+                return AppDomain.CurrentDomain
+                            .GetAssemblies()
+                            .Where(a => !(a.IsDynamic || a.ReflectionOnly))
+                            .Where(a =>
+                            {
+                                var name = a.GetName().Name;
+
+                                return name.StartsWith("Nancy", StringComparison.OrdinalIgnoreCase)
+                                    && !name.StartsWith("Nancy.Testing", StringComparison.OrdinalIgnoreCase);
+                            })
+                            .Where(a => a != typeof(CompositionContextNancyBootstrapper).Assembly);
+            }
         }
 
-        protected virtual void ConfigureApplicationCompositionConventions(ConventionBuilder conventionBuilder)
+        protected virtual void ConfigureCompositionConventions(ConventionBuilder conventions)
         {
-
+            conventions.ForTypesMatching(t => InternalAssemblies.Where(a => a != typeof(NancyEngine).Assembly).Contains(t.Assembly))
+                        .SelectConstructor(cis => cis.OrderBy(ci => ci.GetParameters().Length).First())
+                        .ExportInterfaces()
+                        .Shared();
         }
 
-        protected virtual IEnumerable<Assembly> ConfigureApplicationCompositionAssemblies()
+        protected virtual void ConfigureCompositionAssemblies(IList<Assembly> assemblies)
         {
-            return new[] { Assembly.GetExecutingAssembly() };
+            assemblies.Add(this.GetType().Assembly);
         }
 
-        protected virtual IEnumerable<ExportDescriptorProvider> ConfigureApplicationExportDescriptorProviders()
+        protected virtual void ConfigureCompositionExportDescriptorProviders(IList<ExportDescriptorProvider> assemblies)
         {
-            return Enumerable.Empty<ExportDescriptorProvider>();
+
         }
     }
 }
