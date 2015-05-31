@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<package >
+  <metadata>
+    <id>$id$</id>
+    <version>$version$</version>
+    <title>$title$</title>
+    <authors>$author$</authors>
+    <owners>$author$</owners>
+    <projectUrl>http://github.com/AaronShiels/Nancy.Bootstrappers.Mef2</projectUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>$description$</description>
+    <releaseNotes>Initial release of the MEF2 Nancy Bootstrapper.</releaseNotes>
+    <copyright>Copyright 2015</copyright>
+    <tags>Nancy MEF MEF2 Bootstrappers Micosoft Composition</tags>
+	<dependencies>
+      <dependency id="Microsoft.Composition" version="1.0.30"/>
+	  <dependency id="Nancy"  version="1.2"/>
+    </dependencies>
+  </metadata>
+</package>

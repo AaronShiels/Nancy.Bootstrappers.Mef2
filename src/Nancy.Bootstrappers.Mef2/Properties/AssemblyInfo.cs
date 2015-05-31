@@ -6,9 +6,9 @@ using System.Runtime.InteropServices;
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
 [assembly: AssemblyTitle("Nancy.Bootstrappers.Mef2")]
-[assembly: AssemblyDescription("")]
+[assembly: AssemblyDescription("A Microsoft Extensibility Framework (MEF2) bootstrapper for the Nancy web framework.")]
 [assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("")]
+[assembly: AssemblyCompany("Aaron Shiels")]
 [assembly: AssemblyProduct("Nancy.Bootstrappers.Mef2")]
 [assembly: AssemblyCopyright("Copyright ©  2015")]
 [assembly: AssemblyTrademark("")]
