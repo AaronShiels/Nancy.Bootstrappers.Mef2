@@ -13,8 +13,9 @@ The `CompositionContextNancyBootstrapper`, like all custom Nancy bootstrappers, 
 Due to the nature of the way MEF2 works, it is recommended that you customize your implementation of `CompositionContextNancyBootstrapper` to get more control over what it is doing. The recommended overrides are listed below.
 
 ###Recommended Overrides
+The following overrides are most likely the ones that will be of most use to the every day Nancy developer.
 ```c#
-public class Bootstrapper : CompositionContextNancyBootstrapper
+    public class Bootstrapper : CompositionContextNancyBootstrapper
     {
         protected override void ConfigureCompositionConventions(ConventionBuilder conventions)
         {
@@ -49,7 +50,7 @@ public class Bootstrapper : CompositionContextNancyBootstrapper
         {
             base.ConfigureCompositionExportDescriptorProviders(assemblies);
             
-            //Add any other ExportDescriptorProviders you may want in your application
+            //Add any other ExportDescriptorProviders you may want in your application.
         }
 
         protected override string PerRequestBoundary
@@ -61,9 +62,69 @@ public class Bootstrapper : CompositionContextNancyBootstrapper
                 //Define the name of your sharing boundary to be interpreted as the per-request sharing boundary.
                 
                 //By default, it is "PerRequest".
-                //This means that anything exported with this boundary (via attribute [Shared("PerRequest")] or convention .Shared("PerRequest")) will be served as a Singleton ONLY within that particular request
+                //This means that anything exported with this boundary (via attribute [Shared("PerRequest")] or convention .Shared("PerRequest")) will be served as a Singleton ONLY within that particular request.
             }
         }
+    }
 ```
 
 ###Situation-specific Overrides
+The following overrides are situation specific, and will offer more control over what's going on.
+```c#
+    public class Bootstrapper : CompositionContextNancyBootstrapper
+    {
+        protected override CompositionContext CreateApplicationContainer(ConventionBuilder conventions, IEnumerable<Assembly> assemblies, IEnumerable<ExportDescriptorProvider> providers)
+        {
+            //Add to or replace if you want deeper control over creating the final application container.
+            
+            //The base first creates a ContainerConfiguration() object.
+            //Then, it essentially plugs in the ConventionBuilder as the .WithDefaultConventions(), adds the assemblies using .WithAssemblies(), adds each provider using .WithProvider(), then returns the CompositionHost using .CreateContainer().
+            
+            return base.CreateApplicationContainer(conventions, assemblies, providers);
+        }
+
+        protected override CompositionContext CreateRequestContainer(NancyContext context, CompositionContext parentContainer)
+        {
+            //Replace if you want to change the way you derive request containers.
+            
+            //The base achieves this in much the same fashion Nick does in Alt.Composition.Web.Mvc, by creating a composition contract for an ExportFactory<CompositionContext> with the shared boundary name, and pulling out the result.
+        
+            return base.CreateRequestContainer(context, parentContainer);
+        }
+
+        protected override IEnumerable<Assembly> InternalAssemblies
+        {
+            get
+            {
+                //Override this if the conventions don't suit your needs.
+                
+                //The default gathers all applicable assemblies starting with "Nancy" (but not including "Nancy.Testing"). This isn't always safe.
+                //For example, if your main project (housing your bootstrapper) starts with "Nancy", you will scan multiple implementations of INancyBootstrapper and things will get full cray...
+            
+                return base.InternalAssemblies;
+            }
+        }
+    }
+```
+
+###Standard Overrides
+The standard overrides, much the same as regular Nancy implementations.
+```c#
+    public class Bootstrapper : CompositionContextNancyBootstrapper
+    {
+        protected override void ApplicationStartup(CompositionContext container, IPipelines pipelines)
+        {
+            base.ApplicationStartup(container, pipelines);
+        }
+
+        protected override void RequestStartup(CompositionContext container, IPipelines pipelines, NancyContext context)
+        {
+            base.RequestStartup(container, pipelines, context);
+        }
+
+        protected override void ConfigureConventions(NancyConventions nancyConventions)
+        {
+            base.ConfigureConventions(nancyConventions);
+        }
+    }
+```
