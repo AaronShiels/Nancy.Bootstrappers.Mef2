@@ -71,6 +71,7 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
+    <None Include="Nancy.Bootstrappers.Mef2.nuspec" />
     <None Include="packages.config">
       <SubType>Designer</SubType>
     </None>
