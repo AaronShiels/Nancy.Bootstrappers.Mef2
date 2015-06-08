@@ -64,13 +64,7 @@ namespace Nancy.Bootstrappers.Mef2
             var instanceProvider = GetInternalInstanceExportDescriptorProvider(instanceRegistrations);
             var assemblies = InternalAssemblies.ToList();
 
-            ConfigureCompositionConventions(conventions);
-            ConfigureCompositionAssemblies(assemblies);
-            ConfigureInstanceExportDescriptorProvider(instanceProvider);
-            var providers = new[] { instanceProvider };
-            ConfigureCompositionExportDescriptorProviders(providers);
-
-            ApplicationContainer = CreateApplicationContainer(conventions, assemblies, providers);
+            ApplicationContainer = CreateApplicationContainer(conventions, assemblies, instanceProvider);
 
             foreach (var applicationStartupTask in GetApplicationStartupTasks().ToList())
                 applicationStartupTask.Initialize(ApplicationPipelines);
@@ -435,7 +429,7 @@ namespace Nancy.Bootstrappers.Mef2
         private CompositionContext CreateContainerInternal(ConventionBuilder conventions, IEnumerable<Assembly> assemblies, IEnumerable<ExportDescriptorProvider> providers)
         {
             var containerConfiguration = new ContainerConfiguration().WithDefaultConventions(conventions)
-                                                                    .WithAssemblies(assemblies);
+                                                                     .WithAssemblies(assemblies);
 
             foreach (var provider in providers)
                 containerConfiguration.WithProvider(provider);
@@ -445,9 +439,15 @@ namespace Nancy.Bootstrappers.Mef2
             return container;
         }
 
-        protected virtual CompositionContext CreateApplicationContainer(ConventionBuilder conventions, IEnumerable<Assembly> assemblies, IEnumerable<ExportDescriptorProvider> providers)
+        protected virtual CompositionContext CreateApplicationContainer(ConventionBuilder internalConventions, IList<Assembly> internalAssemblies, InstanceExportDescriptorProvider instanceProvider)
         {
-            return CreateContainerInternal(conventions, assemblies, providers);
+            ConfigureCompositionConventions(internalConventions);
+            ConfigureCompositionAssemblies(internalAssemblies);
+            ConfigureInstanceExportDescriptorProvider(instanceProvider);
+            var providers = new[] { instanceProvider };
+            ConfigureCompositionExportDescriptorProviders(providers);
+
+            return CreateContainerInternal(internalConventions, internalAssemblies, providers);
         }
 
         private ConventionBuilder GetInternalCompositionConventions(IList<TypeRegistration> typeRegistrations)
