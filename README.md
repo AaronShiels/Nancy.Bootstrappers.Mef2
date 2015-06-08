@@ -75,10 +75,12 @@ The following overrides are situation specific, and will offer more control over
     {
         protected override CompositionContext CreateApplicationContainer(ConventionBuilder conventions, IEnumerable<Assembly> assemblies, IEnumerable<ExportDescriptorProvider> providers)
         {
-            //Add to or replace if you want deeper control over creating the final application container.
+			//Replace if you want deeper control over creating the final application container.
+			//This feeds in only the bare minimum internal conventions/assemblies/providers, and replacing this will skip the configuration methods listed above.
             
-            //The base first creates a ContainerConfiguration() object.
-            //Then, it essentially plugs in the ConventionBuilder as the .WithDefaultConventions(), adds the assemblies using .WithAssemblies(), adds each provider using .WithProvider(), then returns the CompositionHost using .CreateContainer().
+			//The base first creates a ContainerConfiguration() object.
+			//Then, it executes all the configuration methods (as listed in the previous overrides group)
+			//Finally, it plugs in the configured ConventionBuilder using the .WithDefaultConventions(), adds the configured assemblies using .WithAssemblies(), adds each provider (configured) using .WithProvider(), then returns the CompositionHost using .CreateContainer().
             
             return base.CreateApplicationContainer(conventions, assemblies, providers);
         }
