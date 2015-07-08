@@ -12,9 +12,9 @@
     <releaseNotes>Initial release of the MEF2 Nancy Bootstrapper.</releaseNotes>
     <copyright>Copyright 2015</copyright>
     <tags>Nancy MEF MEF2 Bootstrappers Micosoft Composition Managed Extensibility Framework</tags>
-	<dependencies>
-      <dependency id="Microsoft.Composition" version="1.0.30"/>
-	  <dependency id="Nancy"  version="1.2"/>
+	  <dependencies>
+        <dependency id="Microsoft.Composition" version="1.0.30"/>
+	      <dependency id="Nancy"  version="1.2"/>
     </dependencies>
   </metadata>
 </package>

@@ -441,13 +441,7 @@ namespace Nancy.Bootstrappers.Mef2
 
         protected virtual CompositionContext CreateApplicationContainer(ConventionBuilder internalConventions, IList<Assembly> internalAssemblies, InstanceExportDescriptorProvider instanceProvider)
         {
-            ConfigureCompositionConventions(internalConventions);
-            ConfigureCompositionAssemblies(internalAssemblies);
-            ConfigureInstanceExportDescriptorProvider(instanceProvider);
-            var providers = new[] { instanceProvider };
-            ConfigureCompositionExportDescriptorProviders(providers);
-
-            return CreateContainerInternal(internalConventions, internalAssemblies, providers);
+            return CreateContainerInternal(internalConventions, internalAssemblies, new[] { instanceProvider });
         }
 
         private ConventionBuilder GetInternalCompositionConventions(IList<TypeRegistration> typeRegistrations)
@@ -525,32 +519,6 @@ namespace Nancy.Bootstrappers.Mef2
                             })
                             .Where(a => a != typeof(CompositionContextNancyBootstrapper).Assembly);
             }
-        }
-
-        protected virtual void ConfigureCompositionConventions(ConventionBuilder conventions)
-        {
-            //Exports interfaces of all Nancy assemblies (other than Nancy itself) to achieve minimum parity to AutoRegister
-            //Deliberately excludes user-provided assemblies; this should be configured by them
-            conventions.ForTypesMatching(t => InternalAssemblies.Where(a => a != typeof(NancyEngine).Assembly).Contains(t.Assembly))
-                        .SelectConstructor(cis => cis.OrderBy(ci => ci.GetParameters().Length).First())
-                        .ExportInterfaces()
-                        .Shared();
-        }
-
-        protected virtual void ConfigureCompositionAssemblies(IList<Assembly> assemblies)
-        {
-            //Adds assembly of CCNBootstrapper to cover trivial projects, should be replaced with explicit list
-            assemblies.Add(this.GetType().Assembly);
-        }
-
-        protected virtual void ConfigureInstanceExportDescriptorProvider(InstanceExportDescriptorProvider provider)
-        {
-
-        }
-
-        protected virtual void ConfigureCompositionExportDescriptorProviders(IList<ExportDescriptorProvider> assemblies)
-        {
-
         }
     }
 }

@@ -2,14 +2,20 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Composition;
+using System.Composition.Convention;
+using Nancy.Bootstrapper;
 
 namespace Nancy.Bootstrappers.Mef2.Tests.Fakes
 {
     public class FakeCompositionContextNancyBootstrapper : CompositionContextNancyBootstrapper
     {
-        protected override void ConfigureInstanceExportDescriptorProvider(InstanceExportDescriptorProvider provider)
+        protected override CompositionContext CreateApplicationContainer(ConventionBuilder internalConventions, IList<Assembly> internalAssemblies, InstanceExportDescriptorProvider instanceProvider)
         {
-            provider.RegisterExport(typeof(IInstanceDependency), new InstanceDependency("Mah secrat messahhge!"));
+            internalAssemblies.Add(this.GetType().Assembly);
+            instanceProvider.RegisterExport(typeof(IInstanceDependency), new InstanceDependency("Mah secrat messahhge!"));
+
+            return base.CreateApplicationContainer(internalConventions, internalAssemblies, instanceProvider);
         }
 
         protected override IEnumerable<Assembly> InternalAssemblies

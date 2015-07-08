@@ -17,40 +17,16 @@ The following overrides are most likely the ones that will be of most use to the
 ```c#
     public class Bootstrapper : CompositionContextNancyBootstrapper
     {
-        protected override void ConfigureCompositionConventions(ConventionBuilder conventions)
+        protected override CompositionContext CreateApplicationContainer(ConventionBuilder internalConventions, IList<Assembly> internalAssemblies, InstanceExportDescriptorProvider instanceProvider)
         {
-            base.ConfigureCompositionConventions(conventions);
+			//Add to the beginning of this method to extend on the internal conventions, assemblies, and instance-export provider, before composition.
+			//Replace if you want deeper control over creating the final application container.
             
-            //Add part conventions to the ConventionBuilder to register your types the way you want.
+			//For quick reference, the base first creates a ContainerConfiguration() object.
+			//Then, it executes all the configuration methods (as listed in the previous overrides group)
+			//Finally, it plugs in the configured ConventionBuilder using the .WithDefaultConventions(), adds the configured assemblies using .WithAssemblies(), adds each provider (configured) using .WithProvider(), then returns the CompositionHost using .CreateContainer().
             
-            //Base implementation performs an export on ALL types in the Nancy.* namespace (outside Nancy itself).
-            //This attains parity with Autoregister for Nancy references, but deliberately excludes user-provided types.
-        }
-
-        protected override void ConfigureCompositionAssemblies(IList<Assembly> assemblies)
-        {
-            base.ConfigureCompositionAssemblies(assemblies);
-            
-            //Add assemblies you would like your export conventions to apply to.
-            
-            //Base implementation adds the assembly that this implementation of the bootstrapper exists in.
-            //It's probably a good idea to replace these with your own list (adding to the internal assemblies, of course).
-        }
-
-        protected override void ConfigureInstanceExportDescriptorProvider(InstanceExportDescriptorProvider provider)
-        {
-            base.ConfigureInstanceExportDescriptorProvider(provider);
-            
-            //Add pre-configured instance objects to the provider using provider.RegisterExport(type, object)
-            
-            //As MEF2 cannot register pre-configured 'instance' objects using the ConventionBuilder and TypedParts framework, a ExportDescriptorProvider is offered to serve object instances added before composition time.
-        }
-
-        protected override void ConfigureCompositionExportDescriptorProviders(IList<ExportDescriptorProvider> assemblies)
-        {
-            base.ConfigureCompositionExportDescriptorProviders(assemblies);
-            
-            //Add any other ExportDescriptorProviders you may want in your application.
+            return base.CreateApplicationContainer(internalConventions, internalAssemblies, instanceProvider);
         }
 
         protected override string PerRequestBoundary
@@ -73,18 +49,6 @@ The following overrides are situation specific, and will offer more control over
 ```c#
     public class Bootstrapper : CompositionContextNancyBootstrapper
     {
-        protected override CompositionContext CreateApplicationContainer(ConventionBuilder conventions, IEnumerable<Assembly> assemblies, IEnumerable<ExportDescriptorProvider> providers)
-        {
-			//Replace if you want deeper control over creating the final application container.
-			//This feeds in only the bare minimum internal conventions/assemblies/providers, and replacing this will skip the configuration methods listed above.
-            
-			//The base first creates a ContainerConfiguration() object.
-			//Then, it executes all the configuration methods (as listed in the previous overrides group)
-			//Finally, it plugs in the configured ConventionBuilder using the .WithDefaultConventions(), adds the configured assemblies using .WithAssemblies(), adds each provider (configured) using .WithProvider(), then returns the CompositionHost using .CreateContainer().
-            
-            return base.CreateApplicationContainer(conventions, assemblies, providers);
-        }
-
         protected override CompositionContext CreateRequestContainer(NancyContext context, CompositionContext parentContainer)
         {
             //Replace if you want to change the way you derive request containers.
